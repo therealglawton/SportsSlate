@@ -143,9 +143,14 @@ function showError(text) {
 function clearTableForFullLoad() {
   const tbl = $("tbl");
   const tbody = $("tbody");
+  const board = $("cardBoard");
   const count = $("countLine");
   if (tbl) tbl.style.display = "none";
   if (tbody) tbody.innerHTML = "";
+  if (board) {
+    board.innerHTML = "";
+    board.style.display = "none";
+  }
   if (count) count.textContent = "";
 }
 
@@ -521,6 +526,14 @@ function renderCards(games) {
 
   const futureMode = isFutureMode();
   board.innerHTML = "";
+
+  if (!games.length) {
+    board.innerHTML = `<div class="muted">No CBB games for this date.</div>`;
+    board.style.display = "block";
+    const tbl = $("tbl");
+    if (tbl) tbl.style.display = "none";
+    return;
+  }
 
   for (const g of games) {
     const card = document.createElement("div");
