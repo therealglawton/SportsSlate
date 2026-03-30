@@ -1055,4 +1055,4 @@ async function loadGames(yyyymmdd = null, silent = false) {
 wireTabs();
 wireSorting();
 wireFilters();
-loadGames();
+setSport(state.sport);
