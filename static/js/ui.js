@@ -655,7 +655,18 @@ function renderCards(games) {
     card.appendChild(matchup);
     card.appendChild(status);
     card.appendChild(main);
-    card.appendChild(sub);
+
+    // Show probable starting pitchers for upcoming games when available
+    const probDiv = document.createElement("div");
+    probDiv.className = "sub";
+    const awayProb = g.away?.probable?.name || g.away_probable?.name || g.away?.probable || "";
+    const homeProb = g.home?.probable?.name || g.home_probable?.name || g.home?.probable || "";
+    if ((awayProb || homeProb) && g.state !== "in" && g.state !== "post") {
+      const awayLabel = awayProb || "TBA";
+      const homeLabel = homeProb || "TBA";
+      probDiv.textContent = `Probables: ${awayLabel} vs ${homeLabel}`;
+      card.appendChild(probDiv);
+    }
     card.appendChild(footer);
 
     board.appendChild(card);
@@ -720,23 +731,38 @@ function renderMlbCards(games) {
     const status = document.createElement("div");
     status.className = "status";
 
-    if (g.state === "post" && g.away?.score != null && g.home?.score != null) {
-      status.textContent = "Final";
-    } else {
-      status.textContent = formatLocalTime(g.startTime) || (g.status || "Scheduled");
-    }
-
     const main = document.createElement("div");
     main.className = "main";
+
     if (g.state === "post" && g.away?.score != null && g.home?.score != null) {
+      // Finished game: show final + score
+      status.textContent = "Final";
       main.textContent = `${away} ${g.away.score} – ${home} ${g.home.score}`;
+    } else if (g.state === "in") {
+      // Live game: show live status, avoid redundant "Scheduled"
+      status.textContent = g.status || "LIVE";
+      main.textContent = "";
     } else {
-      main.textContent = g.status || "Scheduled";
+      // Upcoming: show local start time if available, but do not display "Scheduled"
+      status.textContent = formatLocalTime(g.startTime) || "";
+      main.textContent = "";
     }
 
     card.appendChild(matchup);
     card.appendChild(status);
     card.appendChild(main);
+
+    // Show probable starting pitchers for upcoming MLB games when available
+    const probDiv = document.createElement("div");
+    probDiv.className = "sub";
+    const awayProb = g.away_probable?.name || g.away?.probable?.name || g.away?.probable || "";
+    const homeProb = g.home_probable?.name || g.home?.probable?.name || g.home?.probable || "";
+    if ((awayProb || homeProb) && g.state !== "in" && g.state !== "post") {
+      const awayLabel = awayProb || "TBA";
+      const homeLabel = homeProb || "TBA";
+      probDiv.textContent = `Probables: ${awayLabel} vs ${homeLabel}`;
+      card.appendChild(probDiv);
+    }
 
     board.appendChild(card);
   }
