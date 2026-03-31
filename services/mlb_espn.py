@@ -6,6 +6,7 @@ import requests
 
 SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard"
 SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/summary"
+REQUEST_HEADERS = {"User-Agent": "cbb-dashboard/1.0"}
 
 def mlb_game_url(event_id: str | None) -> str:
     if not event_id:
@@ -23,27 +24,94 @@ def _safe_int(x: Any) -> Optional[int]:
         return None
 
 
+def _extract_probable_name_id(athlete_like: Any, fallback_id: Any = None) -> Optional[Dict[str, Any]]:
+    if athlete_like is None:
+        return None
+
+    if isinstance(athlete_like, dict):
+        name = (
+            athlete_like.get("displayName")
+            or athlete_like.get("fullName")
+            or athlete_like.get("shortName")
+            or athlete_like.get("name")
+        )
+        pid = athlete_like.get("id") or athlete_like.get("playerId") or fallback_id
+        return {"id": pid, "name": name} if (name or pid) else None
+
+    name = str(athlete_like).strip()
+    return {"id": fallback_id, "name": name} if (name or fallback_id) else None
+
+
+def _channels_from_competition(comp: Dict[str, Any]) -> List[str]:
+    out: List[str] = []
+    for b in comp.get("broadcasts") or []:
+        if not isinstance(b, dict):
+            continue
+        names = b.get("names") or []
+        if isinstance(names, list):
+            for n in names:
+                s = str(n or "").strip()
+                if s:
+                    out.append(s)
+    # de-dupe while preserving order
+    dedup: List[str] = []
+    seen = set()
+    for c in out:
+        if c not in seen:
+            seen.add(c)
+            dedup.append(c)
+    return dedup
+
+
+def _live_from_situation(sit: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(sit, dict):
+        return None
+
+    inning = _safe_int(sit.get("inning"))
+    is_top = sit.get("isTopInning")
+    half_raw = sit.get("halfInning")
+    inning_half = None
+    if isinstance(is_top, bool):
+        inning_half = "Top" if is_top else "Bottom"
+    elif isinstance(half_raw, str) and half_raw.strip():
+        inning_half = half_raw.strip().title()
+
+    inning_text = None
+    if inning_half and inning:
+        inning_text = f"{inning_half} {inning}"
+    elif inning:
+        inning_text = f"Inning {inning}"
+
+    return {
+        "inning": inning,
+        "inning_half": inning_half,
+        "inning_text": inning_text,
+        "outs": _safe_int(sit.get("outs")),
+        "balls": _safe_int(sit.get("balls")),
+        "strikes": _safe_int(sit.get("strikes")),
+        "on_first": bool(sit.get("onFirst")),
+        "on_second": bool(sit.get("onSecond")),
+        "on_third": bool(sit.get("onThird")),
+        "batter": _extract_probable_name_id(sit.get("batter") or sit.get("atBat") or sit.get("atBatPlayer")),
+        "pitcher": _extract_probable_name_id(sit.get("pitcher") or sit.get("defendingPitcher")),
+    }
+
+
+def _has_live_essentials(live: Optional[Dict[str, Any]]) -> bool:
+    if not live:
+        return False
+    return any(
+        live.get(k) is not None
+        for k in ("inning_text", "outs", "balls", "strikes", "batter", "pitcher")
+    )
+
+
 def _find_probables_in_obj(obj: Any) -> Dict[str, Optional[Dict[str, Any]]]:
     """Recursively search a JSON-like object for probable/probables entries.
 
     Returns a dict with optional 'home' and 'away' entries like {"home": {id,name}, "away": ...}
     """
     out = {"home": None, "away": None}
-
-    def _extract_probable(athlete_like: Any) -> Optional[Dict[str, Any]]:
-        if athlete_like is None:
-            return None
-        if isinstance(athlete_like, dict):
-            name = (
-                athlete_like.get("displayName")
-                or athlete_like.get("fullName")
-                or athlete_like.get("shortName")
-                or athlete_like.get("name")
-            )
-            pid = athlete_like.get("id") or athlete_like.get("playerId")
-            return {"id": pid, "name": name} if (name or pid) else None
-        s = str(athlete_like).strip()
-        return {"id": None, "name": s} if s else None
 
     def _recurse(o: Any, side_ctx: Optional[str] = None) -> None:
         if o is None:
@@ -63,7 +131,7 @@ def _find_probables_in_obj(obj: Any) -> Dict[str, Optional[Dict[str, Any]]]:
                     if isinstance(v, dict):
                         side = (v.get("homeAway") or v.get("homeaway") or next_side_ctx)
                         athlete = v.get("athlete") or v.get("player") or v
-                        parsed = _extract_probable(athlete)
+                        parsed = _extract_probable_name_id(athlete, v.get("playerId"))
                         if side == "home" and not out["home"] and parsed:
                             out["home"] = parsed
                         if side == "away" and not out["away"] and parsed:
@@ -75,7 +143,7 @@ def _find_probables_in_obj(obj: Any) -> Dict[str, Optional[Dict[str, Any]]]:
                                 continue
                             side = item.get("homeAway") or item.get("homeaway") or next_side_ctx
                             athlete = item.get("athlete") or item.get("player") or item
-                            parsed = _extract_probable(athlete)
+                            parsed = _extract_probable_name_id(athlete, item.get("playerId"))
 
                             if side == "home" and not out["home"] and parsed:
                                 out["home"] = parsed
@@ -92,19 +160,22 @@ def _find_probables_in_obj(obj: Any) -> Dict[str, Optional[Dict[str, Any]]]:
     return out
 
 
-def _fetch_probables_for_event(event_id: str, timeout: int = 12) -> Optional[Dict[str, Optional[Dict[str, Any]]]]:
-    """Best-effort fetch of extra event details to find probable pitchers.
+def _fetch_summary_for_event(event_id: str, timeout: int = 12) -> Optional[Dict[str, Any]]:
+    """Best-effort fetch of extra event details.
 
-    Returns a dict like {"home": {id,name}, "away": {id,name}} or None on failure.
+    Returns parsed summary data containing optional probable and live fields.
     """
     try:
-        r = requests.get(SUMMARY_URL, params={"event": event_id}, timeout=timeout, headers={"User-Agent": "cbb-dashboard/1.0"})
+        r = requests.get(SUMMARY_URL, params={"event": event_id}, timeout=timeout, headers=REQUEST_HEADERS)
         r.raise_for_status()
         j = r.json()
-        found = _find_probables_in_obj(j)
-        # return only if something found
-        if found.get("home") or found.get("away"):
-            return found
+        found_probables = _find_probables_in_obj(j)
+        found_live = _live_from_situation(j.get("situation"))
+        if found_probables.get("home") or found_probables.get("away") or _has_live_essentials(found_live):
+            return {
+                "probables": found_probables,
+                "live": found_live,
+            }
     except Exception:
         return None
     return None
@@ -118,7 +189,7 @@ def get_mlb_games(date_yyyymmdd: str, timeout: int = 12, use_summary_fallback: b
         SCOREBOARD_URL,
         params={"dates": date_yyyymmdd},
         timeout=timeout,
-        headers={"User-Agent": "cbb-dashboard/1.0"},
+        headers=REQUEST_HEADERS,
     )
     r.raise_for_status()
     data = r.json()
@@ -137,11 +208,13 @@ def get_mlb_games(date_yyyymmdd: str, timeout: int = 12, use_summary_fallback: b
         st_type = (status.get("type") or {})
         state = st_type.get("state")  # "pre", "in", "post"
         detail = st_type.get("detail") or st_type.get("description") or ""
+        channels = _channels_from_competition(comp)
 
         # Teams + scores
         home = away = None
         home_probable = None
         away_probable = None
+        live = _live_from_situation(comp.get("situation")) if state == "in" else None
         competitors = comp.get("competitors", []) or []
         for c in competitors:
             side = c.get("homeAway")
@@ -164,19 +237,7 @@ def get_mlb_games(date_yyyymmdd: str, timeout: int = 12, use_summary_fallback: b
                     if not isinstance(p, dict):
                         continue
                     athlete = p.get("athlete") or p.get("player") or p
-                    if isinstance(athlete, dict):
-                        pname = (
-                            athlete.get("displayName")
-                            or athlete.get("fullName")
-                            or athlete.get("shortName")
-                            or athlete.get("name")
-                        )
-                        pid = athlete.get("id") or p.get("playerId")
-                    else:
-                        pname = str(athlete).strip()
-                        pid = p.get("playerId")
-
-                    parsed = {"id": pid, "name": pname} if (pname or pid) else None
+                    parsed = _extract_probable_name_id(athlete, p.get("playerId"))
                     if side == "home" and not home_probable and parsed:
                         home_probable = parsed
                     if side == "away" and not away_probable and parsed:
@@ -188,17 +249,15 @@ def get_mlb_games(date_yyyymmdd: str, timeout: int = 12, use_summary_fallback: b
             try:
                 p_side = p.get("homeAway")
                 athlete = p.get("athlete") or p.get("player") or {}
-                pname = athlete.get("displayName") or athlete.get("fullName") or athlete.get("shortName") or athlete.get("name")
-                pid = athlete.get("id") or p.get("playerId")
+                parsed = _extract_probable_name_id(athlete, p.get("playerId"))
             except Exception:
                 p_side = None
-                pname = None
-                pid = None
+                parsed = None
 
             if p_side == "home" and not home_probable:
-                home_probable = {"id": pid, "name": pname} if (pname or pid) else None
+                home_probable = parsed
             elif p_side == "away" and not away_probable:
-                away_probable = {"id": pid, "name": pname} if (pname or pid) else None
+                away_probable = parsed
 
         # Some ESPN variants place the probable pitcher on the competitor object itself
         for c in competitors:
@@ -206,21 +265,17 @@ def get_mlb_games(date_yyyymmdd: str, timeout: int = 12, use_summary_fallback: b
             pp = c.get("probablePitcher") or c.get("probable")
             if pp and isinstance(pp, dict):
                 athlete = pp.get("athlete") or pp.get("player") or pp
-                pname = None
-                pid = None
-                if isinstance(athlete, dict):
-                    pname = athlete.get("displayName") or athlete.get("fullName") or athlete.get("name")
-                    pid = athlete.get("id")
-                else:
-                    pname = str(athlete)
+                parsed = _extract_probable_name_id(athlete, pp.get("playerId"))
 
                 if side == "home" and not home_probable:
-                    home_probable = {"id": pid, "name": pname} if (pname or pid) else None
+                    home_probable = parsed
                 if side == "away" and not away_probable:
-                    away_probable = {"id": pid, "name": pname} if (pname or pid) else None
+                    away_probable = parsed
 
         # Defer summary lookups to a batched/parallel step to avoid serial network requests
         if state == "pre" and use_summary_fallback and (not home_probable or not away_probable) and event_id:
+            need_summary[len(out)] = str(event_id)
+        if state == "in" and event_id and not _has_live_essentials(live):
             need_summary[len(out)] = str(event_id)
 
         # If still missing probables for a pregame, we'll fill TBA later after any fallback
@@ -236,6 +291,8 @@ def get_mlb_games(date_yyyymmdd: str, timeout: int = 12, use_summary_fallback: b
             "status": detail,        # "Final", "Scheduled", etc.
             "home": home,
             "away": away,
+            "channels": channels,
+            "live": live,
             "home_probable": home_probable,
             "away_probable": away_probable,
         })
@@ -247,7 +304,7 @@ def get_mlb_games(date_yyyymmdd: str, timeout: int = 12, use_summary_fallback: b
 
             def _fetch_wrap(idx, eid):
                 try:
-                    return idx, _fetch_probables_for_event(eid, timeout=timeout)
+                    return idx, _fetch_summary_for_event(eid, timeout=timeout)
                 except Exception:
                     return idx, None
 
@@ -263,10 +320,13 @@ def get_mlb_games(date_yyyymmdd: str, timeout: int = 12, use_summary_fallback: b
                         continue
                     # Only set values if they were missing originally
                     cur = out[idx]
-                    if not cur.get("home_probable") and fb.get("home"):
-                        cur["home_probable"] = fb.get("home")
-                    if not cur.get("away_probable") and fb.get("away"):
-                        cur["away_probable"] = fb.get("away")
+                    fb_prob = fb.get("probables") or {}
+                    if not cur.get("home_probable") and fb_prob.get("home"):
+                        cur["home_probable"] = fb_prob.get("home")
+                    if not cur.get("away_probable") and fb_prob.get("away"):
+                        cur["away_probable"] = fb_prob.get("away")
+                    if cur.get("state") == "in" and not _has_live_essentials(cur.get("live")):
+                        cur["live"] = fb.get("live")
         except Exception:
             # Non-fatal: continue with whatever we have
             pass

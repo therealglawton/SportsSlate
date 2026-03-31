@@ -28,8 +28,6 @@ def normalize_team(name: str | None) -> str:
         "fau": "florida atlantic",
         "fiu": "florida international",
         "etsu": "east tennessee state",
-        "vmi": "vmi",
-        "uab": "uab",
 
         "jax state": "jacksonville state",
         "purdue fw": "purdue fort wayne",
@@ -80,9 +78,6 @@ def normalize_team(name: str | None) -> str:
         "nc central": "north carolina central",
         "md eastern": "maryland eastern shore",
         "sc upstate": "usc upstate",
-
-
-
     }
     if s in exact:
         return exact[s]
@@ -140,21 +135,10 @@ def normalize_team(name: str | None) -> str:
         "western ky": "western kentucky",
         "seattle university": "seattle",
         "lmu": "loyola marymount",
-        # 1/5 KenPom variants (post-normalization)
-        "arkansas pine bluff": "arkansas pine bluff",
-        "southeastern louisiana": "southeastern louisiana",
-        "ut rio grande valley": "ut rio grande valley",
-        "stephen f austin": "stephen f austin",
-        "mississippi valley state": "mississippi valley state",
-        "houston christian": "houston christian",
-        "texas aandm corpus christi": "texas aandm corpus christi",
         # 1/5 remaining mismatches (ESPN abbreviations after rules run)
         "nwestern state": "northwestern state",
         "eastern texas aandm": "east texas aandm",
         "bethune": "bethune cookman",
-
-
-
     }
     return post.get(s, s)
 

@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-from utils.dates import today_yyyymmdd_eastern, kp_date, is_future_yyyymmdd_eastern
+from utils.dates import today_yyyymmdd_eastern
 from services.espn import urls_by_event_id
 from services.build import build_games_for_date
 

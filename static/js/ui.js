@@ -22,11 +22,7 @@ const state = {
   sort: { key: "time", dir: "asc" }, // default: time asc (thrill tiebreaker desc)
 
   filters: {
-    qText: "",
     minThrill: 0,
-    networkChoice: "",
-    hideEspnPlus: false,
-
     // Conference filter:
     // "" = all
     // "hi" = high major
@@ -62,14 +58,11 @@ function setSport(sport) {
   }
 
   // Disable CBB-only controls in MLB mode (prevents weird filtering/UI surprises)
-  const cbbOnlyIds = ["minThrill", "confFilter", "networkFilter", "hideEspnPlus", "clearFilters"];
+  const cbbOnlyIds = ["minThrill", "confFilter", "clearFilters"];
   cbbOnlyIds.forEach((id) => {
     const el = $(id);
     if (el) el.disabled = !isCbb;
   });
-
-  // Search box: keep enabled for CBB, disable for MLB for now (simple + predictable)
-  if ($("q")) $("q").disabled = !isCbb;
 
   // Stop any polling when switching sports (MLB polling can be added later)
   setPollingMode("off");
@@ -621,12 +614,6 @@ function renderCards(games) {
     main.className = "main";
     main.textContent = mainText;
 
-    const sub = document.createElement("div");
-    sub.className = "sub";
-    if (stateCls === "upcoming") sub.textContent = "KenPom prediction";
-    else if (stateCls === "live") sub.textContent = "Live game";
-    else sub.textContent = "";
-
     const footer = document.createElement("div");
     footer.className = "footer";
 
@@ -658,7 +645,7 @@ function renderCards(games) {
 
     // Show probable starting pitchers for upcoming games when available
     const probDiv = document.createElement("div");
-    probDiv.className = "sub";
+    probDiv.className = "sub mlb-probables";
     const awayProb = g.away?.probable?.name || g.away_probable?.name || g.away?.probable || "";
     const homeProb = g.home?.probable?.name || g.home_probable?.name || g.home?.probable || "";
     if ((awayProb || homeProb) && g.state !== "in" && g.state !== "post") {
@@ -686,12 +673,78 @@ function mlbHrefFromGame(game) {
   return eventId ? `https://www.espn.com/mlb/game/_/gameId/${eventId}` : "";
 }
 
+function channelTextFromGame(game) {
+  const channels = Array.isArray(game?.channels) ? game.channels.filter(Boolean) : [];
+  return channels.join(", ");
+}
+
+function buildBasesGraphic(live) {
+  const wrap = document.createElement("div");
+  wrap.className = "bases";
+
+  const diamond = document.createElement("div");
+  diamond.className = "diamond";
+
+  const first = document.createElement("span");
+  first.className = `base first${live?.on_first ? " on" : ""}`;
+
+  const second = document.createElement("span");
+  second.className = `base second${live?.on_second ? " on" : ""}`;
+
+  const third = document.createElement("span");
+  third.className = `base third${live?.on_third ? " on" : ""}`;
+
+  diamond.appendChild(first);
+  diamond.appendChild(second);
+  diamond.appendChild(third);
+  wrap.appendChild(diamond);
+  return wrap;
+}
+
+function demoLiveMlbGame() {
+  return {
+    id: "demo-live",
+    url: "",
+    startTime: new Date().toISOString(),
+    state: "in",
+    status: "Top 7th",
+    channels: ["ESPN"],
+    away: { abbr: "NYY", name: "Yankees", score: 4 },
+    home: { abbr: "BOS", name: "Red Sox", score: 3 },
+    live: {
+      inning: 7,
+      inning_half: "Top",
+      inning_text: "Top 7",
+      outs: 1,
+      balls: 2,
+      strikes: 1,
+      on_first: true,
+      on_second: false,
+      on_third: true,
+      batter: { id: "demo-batter", name: "Aaron Judge" },
+      pitcher: { id: "demo-pitcher", name: "Kenley Jansen" },
+    },
+  };
+}
+
+function shouldShowDemoLiveCard() {
+  try {
+    const q = new URLSearchParams(window.location.search);
+    return q.get("demoLiveCard") === "1";
+  } catch {
+    return false;
+  }
+}
+
 // MLB cards (reuses .game-card styling)
 function renderMlbCards(games) {
   const board = $("cardBoard");
   if (!board) return;
 
   const sorted = [...(games || [])].sort((a, b) => String(a.startTime || "").localeCompare(String(b.startTime || "")));
+  if (shouldShowDemoLiveCard() && !sorted.some((g) => g.state === "in")) {
+    sorted.unshift(demoLiveMlbGame());
+  }
   board.innerHTML = "";
 
   if (!sorted.length) {
@@ -733,15 +786,18 @@ function renderMlbCards(games) {
 
     const main = document.createElement("div");
     main.className = "main";
+    const channelText = channelTextFromGame(g);
 
     if (g.state === "post" && g.away?.score != null && g.home?.score != null) {
       // Finished game: show final + score
       status.textContent = "Final";
       main.textContent = `${away} ${g.away.score} – ${home} ${g.home.score}`;
     } else if (g.state === "in") {
-      // Live game: show live status, avoid redundant "Scheduled"
-      status.textContent = g.status || "LIVE";
-      main.textContent = "";
+      // Live game: show score + inning/status details
+      const awayScore = g.away?.score ?? "—";
+      const homeScore = g.home?.score ?? "—";
+      status.textContent = g.live?.inning_text || g.status || "LIVE";
+      main.textContent = `${away} ${awayScore} – ${home} ${homeScore}`;
     } else {
       // Upcoming: show local start time if available, but do not display "Scheduled"
       status.textContent = formatLocalTime(g.startTime) || "";
@@ -752,9 +808,34 @@ function renderMlbCards(games) {
     card.appendChild(status);
     card.appendChild(main);
 
+    // Live details block
+    if (g.state === "in") {
+      const live = g.live || {};
+      const liveMeta = document.createElement("div");
+      liveMeta.className = "mlb-live-meta";
+
+      const people = document.createElement("div");
+      people.className = "sub";
+      const batterName = live?.batter?.name || "TBA";
+      const pitcherName = live?.pitcher?.name || "TBA";
+      people.textContent = `Batting: ${batterName} | Pitching: ${pitcherName}`;
+
+      const countLine = document.createElement("div");
+      countLine.className = "sub";
+      const balls = Number.isFinite(Number(live?.balls)) ? Number(live.balls) : "-";
+      const strikes = Number.isFinite(Number(live?.strikes)) ? Number(live.strikes) : "-";
+      const outs = Number.isFinite(Number(live?.outs)) ? Number(live.outs) : "-";
+      countLine.textContent = `Count: ${balls}-${strikes} | Outs: ${outs}`;
+
+      liveMeta.appendChild(buildBasesGraphic(live));
+      liveMeta.appendChild(people);
+      liveMeta.appendChild(countLine);
+      card.appendChild(liveMeta);
+    }
+
     // Show probable starting pitchers for upcoming MLB games when available
     const probDiv = document.createElement("div");
-    probDiv.className = "sub";
+    probDiv.className = "sub mlb-probables";
     const awayProb = g.away_probable?.name || g.away?.probable?.name || g.away?.probable || "";
     const homeProb = g.home_probable?.name || g.home?.probable?.name || g.home?.probable || "";
     if ((awayProb || homeProb) && g.state !== "in" && g.state !== "post") {
@@ -764,6 +845,17 @@ function renderMlbCards(games) {
       card.appendChild(probDiv);
     }
 
+    const footer = document.createElement("div");
+    footer.className = "footer";
+    const channel = document.createElement("span");
+    channel.className = "mlb-channel";
+    channel.textContent = channelText || "";
+    const stateText = document.createElement("span");
+    stateText.textContent = g.state === "in" ? "LIVE" : "";
+    footer.appendChild(channel);
+    footer.appendChild(stateText);
+    card.appendChild(footer);
+
     board.appendChild(card);
   }
 
@@ -771,31 +863,6 @@ function renderMlbCards(games) {
 
   const tbl = $("tbl");
   if (tbl) tbl.style.display = "none";
-}
-
-function buildNetworkOptions() {
-  const sel = $("networkFilter");
-  if (!sel) return;
-
-  const current = sel.value;
-
-  const set = new Set();
-  for (const g of state.games) {
-    const n = (g.network || "").trim();
-    if (n) set.add(n);
-  }
-
-  const networks = Array.from(set).sort((a, b) => a.localeCompare(b));
-
-  sel.innerHTML = '<option value="">All networks</option>';
-  for (const n of networks) {
-    const opt = document.createElement("option");
-    opt.value = n;
-    opt.textContent = n;
-    sel.appendChild(opt);
-  }
-
-  if (current) sel.value = current;
 }
 
 // =====================================================
@@ -864,14 +931,10 @@ function buildConferenceOptions() {
 // Filtering
 // =====================================================
 function applyFilters(games) {
-  const q = state.filters.qText.trim().toLowerCase();
   const minT = Number(state.filters.minThrill) || 0;
   const confChoice = String(state.filters.confChoice || "");
 
   return games.filter((g) => {
-    if (state.filters.hideEspnPlus && (g.network || "").toUpperCase().includes("ESPN+")) return false;
-    if (state.filters.networkChoice && (g.network || "") !== state.filters.networkChoice) return false;
-
     if (minT > 0) {
       const t = Number(g.kp_thrill);
       if (!Number.isFinite(t) || t < minT) return false;
@@ -887,11 +950,6 @@ function applyFilters(games) {
         const idWanted = confChoice.slice(5);
         if (!gameInConferenceId(g, idWanted)) return false;
       }
-    }
-
-    if (q) {
-      const hay = `${g.away || ""} ${g.home || ""} ${g.network || ""} ${fmtPred(g)}`.toLowerCase();
-      if (!hay.includes(q)) return false;
     }
 
     return true;
@@ -936,23 +994,8 @@ function wireSorting() {
 }
 
 function wireFilters() {
-  $("q")?.addEventListener("input", (e) => {
-    state.filters.qText = e.target.value || "";
-    applySortAndRender();
-  });
-
   $("minThrill")?.addEventListener("change", (e) => {
     state.filters.minThrill = Number(e.target.value) || 0;
-    applySortAndRender();
-  });
-
-  $("networkFilter")?.addEventListener("change", (e) => {
-    state.filters.networkChoice = e.target.value || "";
-    applySortAndRender();
-  });
-
-  $("hideEspnPlus")?.addEventListener("change", (e) => {
-    state.filters.hideEspnPlus = !!e.target.checked;
     applySortAndRender();
   });
 
@@ -964,22 +1007,14 @@ function wireFilters() {
   });
 
   $("clearFilters")?.addEventListener("click", () => {
-    state.filters.qText = "";
     state.filters.minThrill = 0;
-    state.filters.networkChoice = "";
-    state.filters.hideEspnPlus = false;
     state.filters.confChoice = "";
 
-    if ($("q")) $("q").value = "";
     if ($("minThrill")) $("minThrill").value = "0";
-    if ($("networkFilter")) $("networkFilter").value = "";
-    if ($("hideEspnPlus")) $("hideEspnPlus").checked = false;
     if ($("confFilter")) $("confFilter").value = "";
 
     applySortAndRender();
   });
-
-  $("reloadBtn")?.addEventListener("click", () => loadGames());
 
   $("datePicker")?.addEventListener("change", (e) => {
     const yyyymmdd = yyyymmddFromDateInput(e.target.value);
@@ -1108,7 +1143,6 @@ async function loadGames(yyyymmdd = null, silent = false) {
   const isToday = ($("datePicker")?.value || "") === todayIsoLocal();
   setPollingMode(!isFuture && isToday ? (hasLive ? "live" : "idle") : "off");
 
-  buildNetworkOptions();
   buildConferenceOptions();
   applySortAndRender();
   setLastUpdatedNow();

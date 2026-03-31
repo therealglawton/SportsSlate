@@ -75,7 +75,7 @@ def fetch_fanmatch(date_kp: str) -> list[dict]:
             )
         return 200, data
 
-    status_code, data, source = cached_call(cache_key, ttl, fetch_fn)
+    _, data, _ = cached_call(cache_key, ttl, fetch_fn)
 
     # cached_call only caches status==200; still validate shape
     if not isinstance(data, list):
