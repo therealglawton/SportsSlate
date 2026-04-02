@@ -13,6 +13,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16.png">
 
   <link rel="stylesheet" href="/static/css/ui.css">
+  <link rel="stylesheet" href="/static/css/pga_dev.css">
 </head>
 
 <body>
@@ -28,6 +29,7 @@
       <button id="tabNfl" class="tab" type="button" role="tab" aria-selected="false">NFL</button>
       <button id="tabCfb" class="tab" type="button" role="tab" aria-selected="false">CFB</button>
       <button id="tabCbb" class="tab" type="button" role="tab" aria-selected="false">CBB</button>
+      <button id="tabPga" class="tab" type="button" role="tab" aria-selected="false">PGA</button>
     </div>
 
     <!-- Integrated status + controls (low key, single row) -->
@@ -85,7 +87,39 @@
     <div id="countLine" class="muted" style="margin-top:10px;"></div>
     <div id="error" class="error"></div>
 
-    <!-- CARD BOARD (JS will render here) -->
+    <!-- PGA Leaderboard Section (hidden by default) -->
+    <div id="pgaSection" style="display:none;">
+      <div class="row pga-meta" aria-live="polite">
+        <div id="eventName" class="pga-event-name">Waiting for data...</div>
+        <div class="pga-detail-row">
+          <div id="eventDetail" class="muted">Field: --</div>
+          <select id="roundSelect" class="round-select" aria-label="Round selector"></select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+            <colgroup>
+              <col class="col-pos" />
+              <col class="col-player" />
+              <col class="col-to-par" />
+              <col class="col-thru" />
+              <col class="col-today" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Pos</th>
+                <th>Player</th>
+                <th>To Par</th>
+                <th>Thru</th>
+                <th>Today</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- CARD BOARD (JS will render here for MLB/NFL/CFB/CBB) -->
     <div id="cardBoard" class="board"></div>
 
     <!-- TABLE (kept for rollback, currently hidden) -->
@@ -107,5 +141,6 @@
   </div>
 
   <script src="/static/js/ui.js?v=29"></script>
+  <script src="/static/js/pga_dev.js?v=29"></script>
 </body>
 </html>

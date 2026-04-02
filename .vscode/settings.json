@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^set -e\ncd /workspaces/kenpom-dashboard\npython - <<'PY'\nimport requests, json\nurl='https://site\\.api\\.espn\\.com/apis/site/v2/sports/golf/pga/scoreboard'\nj=requests\\.get\\(url,timeout=20\\)\\.json\\(\\)\nprint\\('keys', list\\(j\\.keys\\(\\)\\)\\[:20\\]\\)\nevents=j\\.get\\('events'\\) or \\[\\]\nprint\\('events', len\\(events\\)\\)\nif events:\n    ev=events\\[0\\]\n    print\\('event keys', list\\(ev\\.keys\\(\\)\\)\\)\n    comp=\\(ev\\.get\\('competitions'\\) or \\[\\{\\}\\]\\)\\[0\\]\n    print\\('comp keys', list\\(comp\\.keys\\(\\)\\)\\)\n    competitors=comp\\.get\\('competitors'\\) or \\[\\]\n    print\\('competitors', len\\(competitors\\)\\)\n    if competitors:\n        c=competitors\\[0\\]\n        print\\('competitor keys', list\\(c\\.keys\\(\\)\\)\\)\n        print\\('score', c\\.get\\('score'\\), 'toPar', c\\.get\\('toPar'\\), 'linescores\\?', 'linescores' in c\\)\n        ath=c\\.get\\('athlete'\\) or \\{\\}\n        print\\('athlete keys', list\\(ath\\.keys\\(\\)\\)\\[:20\\]\\)\n        print\\('sample athlete', \\{k:ath\\.get\\(k\\) for k in \\['id','displayName','shortName','flag'\\]\\} \\)\nPY$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

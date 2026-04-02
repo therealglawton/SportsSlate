@@ -10,6 +10,7 @@ import os
 from utils.dates import today_yyyymmdd_eastern
 from services.espn import urls_by_event_id
 from services.build import build_games_for_date
+from services.pga_espn import get_pga_leaderboard
 
 app = FastAPI()
 
@@ -38,6 +39,7 @@ def root():
 
 # UI file
 UI_PATH = Path(__file__).with_name("ui.html")
+UI_PGA_DEV_PATH = Path(__file__).with_name("ui_pga_dev.html")
 
 @app.get("/ui", response_class=HTMLResponse)
 def ui():
@@ -66,6 +68,29 @@ def ui():
         f'content="{APP_VERSION}"'
     )
     
+    return HTMLResponse(
+        content=html_content,
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )
+
+
+@app.get("/ui/pga-dev", response_class=HTMLResponse)
+def ui_pga_dev():
+    html_content = UI_PGA_DEV_PATH.read_text(encoding="utf-8")
+    import re
+
+    html_content = re.sub(
+        r'href="/static/css/pga_dev\.css(\?v=[^"]*)?',
+        f'href="/static/css/pga_dev.css?v={APP_VERSION}',
+        html_content,
+    )
+    html_content = re.sub(
+        r'src="/static/js/pga_dev\.js(\?v=[^"]*)?',
+        f'src="/static/js/pga_dev.js?v={APP_VERSION}',
+        html_content,
+    )
+    html_content = html_content.replace('content=""', f'content="{APP_VERSION}"')
+
     return HTMLResponse(
         content=html_content,
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
@@ -111,3 +136,9 @@ def mlb_games(date: str):
         "date": date,
         "games": get_mlb_games(date)
     }
+
+
+@app.get("/pga/leaderboard")
+def pga_leaderboard(date: str | None = Query(default=None), limit: int = Query(default=0, ge=0, le=500)):
+    # limit=0 means no limit (display full field)
+    return get_pga_leaderboard(date_yyyymmdd=date, limit=limit)

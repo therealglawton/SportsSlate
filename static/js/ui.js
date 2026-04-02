@@ -90,7 +90,9 @@ function setSport(sport) {
   const tabMlb = $("tabMlb");
   const tabNfl = $("tabNfl");
   const tabCfb = $("tabCfb");
+  const tabPga = $("tabPga");
   const isCbb = sport === "cbb";
+  const isPga = sport === "pga";
 
   if (tabCbb) {
     tabCbb.classList.toggle("active", sport === "cbb");
@@ -108,6 +110,18 @@ function setSport(sport) {
     tabCfb.classList.toggle("active", sport === "cfb");
     tabCfb.setAttribute("aria-selected", String(sport === "cfb"));
   }
+  if (tabPga) {
+    tabPga.classList.toggle("active", isPga);
+    tabPga.setAttribute("aria-selected", String(isPga));
+  }
+
+  // Show/hide sections
+  const pgaSection = $("pgaSection");
+  const cardBoard = $("cardBoard");
+  const controlsInline = $("controlsInline");
+  if (pgaSection) pgaSection.style.display = isPga ? "block" : "none";
+  if (cardBoard) cardBoard.style.display = isPga ? "none" : "block";
+  if (controlsInline) controlsInline.style.display = isPga ? "none" : "flex";
 
   // Control availability by sport
   const minThrillEl = $("minThrill");
@@ -119,10 +133,17 @@ function setSport(sport) {
   const clearFiltersEl = $("clearFilters");
   if (clearFiltersEl) clearFiltersEl.disabled = !(sport === "cbb" || sport === "cfb");
 
-  // Stop active polling while switching sports; loadGames will set mode.
+  // Stop active polling while switching sports
   setPollingMode("off");
 
-  loadGames(null, false);
+  if (isPga) {
+    // Load PGA leaderboard (function defined in pga_dev.js)
+    if (typeof loadLeaderboard === "function") {
+      loadLeaderboard();
+    }
+  } else {
+    loadGames(null, false);
+  }
 }
 
 function wireTabs() {
@@ -130,6 +151,7 @@ function wireTabs() {
   $("tabNfl")?.addEventListener("click", () => setSport("nfl"));
   $("tabCfb")?.addEventListener("click", () => setSport("cfb"));
   $("tabCbb")?.addEventListener("click", () => setSport("cbb"));
+  $("tabPga")?.addEventListener("click", () => setSport("pga"));
 }
 
 // =====================================================

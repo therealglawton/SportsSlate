@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <meta id="app-version" name="app-version" content="" />
+  <title>PGA Leaderboard Dev</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16.png">
+  <link rel="stylesheet" href="/static/css/ui.css" />
+  <link rel="stylesheet" href="/static/css/pga_dev.css" />
+</head>
+<body>
+  <div class="container pga-dev-container">
+    <header class="page-header">
+      <h1 class="page-title">Today’s Sports Slate</h1>
+    </header>
+
+    <div class="tabs" role="tablist" aria-label="Sport tabs">
+      <button id="tabMlb" class="tab" type="button" role="tab" aria-selected="false">MLB</button>
+      <button id="tabNfl" class="tab" type="button" role="tab" aria-selected="false">NFL</button>
+      <button id="tabCfb" class="tab" type="button" role="tab" aria-selected="false">CFB</button>
+      <button id="tabCbb" class="tab" type="button" role="tab" aria-selected="false">CBB</button>
+      <button id="tabPga" class="tab active" type="button" role="tab" aria-selected="true">PGA</button>
+    </div>
+
+    <div class="row pga-meta" aria-live="polite">
+      <div id="eventName" class="pga-event-name">Waiting for data...</div>
+      <div class="pga-detail-row">
+        <div id="eventDetail" class="muted">Field: --</div>
+        <select id="roundSelect" class="round-select" aria-label="Round selector"></select>
+      </div>
+    </div>
+
+    <div id="error" class="error" role="alert"></div>
+
+    <div class="table-wrap">
+      <table>
+          <colgroup>
+            <col class="col-pos" />
+            <col class="col-player" />
+            <col class="col-country" />
+            <col class="col-to-par" />
+            <col class="col-thru" />
+            <col class="col-today" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Pos</th>
+              <th>Player</th>
+              <th>Country</th>
+              <th>To Par</th>
+              <th>Thru</th>
+              <th>Today</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/static/js/pga_dev.js"></script>
+</body>
+</html>
