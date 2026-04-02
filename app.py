@@ -5,6 +5,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import RedirectResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+import os
 
 from utils.dates import today_yyyymmdd_eastern
 from services.espn import urls_by_event_id
@@ -12,9 +13,20 @@ from services.build import build_games_for_date
 
 app = FastAPI()
 
+# Version management (read once at startup)
+VERSION_PATH = Path(__file__).with_name("version.txt")
+APP_VERSION = VERSION_PATH.read_text(encoding="utf-8").strip() if VERSION_PATH.exists() else "unknown"
+
 # static
 STATIC_DIR = Path(__file__).with_name("static")
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+class StaticFilesWithCache(StaticFiles):
+    def file_response(self, full_path, stat_result, req_headers=None):
+        response = super().file_response(full_path, stat_result, req_headers)
+        # Cache static files for 1 day, but allow validation with ETag
+        response.headers["Cache-Control"] = "public, max-age=86400, must-revalidate"
+        return response
+
+app.mount("/static", StaticFilesWithCache(directory=str(STATIC_DIR)), name="static")
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
@@ -29,10 +41,42 @@ UI_PATH = Path(__file__).with_name("ui.html")
 
 @app.get("/ui", response_class=HTMLResponse)
 def ui():
+    html_content = UI_PATH.read_text(encoding="utf-8")
+    # Inject version into asset URLs and meta tag for cache busting
+    # Use regex to handle existing version numbers in script tags
+    import re
+    
+    # Replace CSS href
+    html_content = re.sub(
+        r'href="/static/css/ui\.css(\?v=[^"]*)?',
+        f'href="/static/css/ui.css?v={APP_VERSION}',
+        html_content
+    )
+    
+    # Replace JS src (handles existing ?v=XX)
+    html_content = re.sub(
+        r'src="/static/js/ui\.js(\?v=[^"]*)?',
+        f'src="/static/js/ui.js?v={APP_VERSION}',
+        html_content
+    )
+    
+    # Replace meta tag version attribute
+    html_content = html_content.replace(
+        'content=""',
+        f'content="{APP_VERSION}"'
+    )
+    
     return HTMLResponse(
-        content=UI_PATH.read_text(encoding="utf-8"),
+        content=html_content,
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
     )
+
+# Version endpoint (lightweight, for cache invalidation)
+@app.get("/api/version")
+def get_version():
+    return {
+        "version": APP_VERSION
+    }
 
 # ---- UI contract endpoints ----
 
@@ -55,7 +99,6 @@ def games(
     return build_games_for_date(date_espn, date_kp, sport.lower() if sport else "cbb")
 
 # Optional: mount debug routes only when DEBUG=1
-import os
 if os.getenv("DEBUG", "0") == "1":
     from routers.debug import router as debug_router
     app.include_router(debug_router)

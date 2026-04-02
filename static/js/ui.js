@@ -1768,7 +1768,31 @@ function wireFilters() {
     applySortAndRender();
   });
 
-  $("datePicker")?.addEventListener("change", (e) => {
+  $("datePicker")?.addEventListener("change", async (e) => {
+    // Check for version updates when user changes date (simulates pull-to-refresh)
+    const localVersion = getLocalAppVersion();
+    const cacheKey = 'sportsSlate_checked_version';
+    const lastCheckedVersion = sessionStorage.getItem(cacheKey);
+    
+    try {
+      const response = await fetch('/api/version', { cache: 'no-store' });
+      if (response.ok) {
+        const data = await response.json();
+        const remoteVersion = data.version;
+        sessionStorage.setItem(cacheKey, remoteVersion);
+        
+        // If version changed, force hard reload
+        if (localVersion !== remoteVersion && lastCheckedVersion !== remoteVersion) {
+          const timeStamp = Date.now();
+          window.location.href = window.location.pathname + `?v=${remoteVersion}&t=${timeStamp}`;
+          return;
+        }
+      }
+    } catch (err) {
+      // Silently ignore version check errors
+    }
+    
+    // Proceed with normal date change
     const yyyymmdd = yyyymmddFromDateInput(e.target.value);
     persistDate(e.target.value);
     loadGames(yyyymmdd);
@@ -1975,9 +1999,60 @@ async function loadGames(yyyymmdd = null, silent = false) {
 }
 
 // =====================================================
+// Version Detection & Cache Busting
+// =====================================================
+function getLocalAppVersion() {
+  // Get version from meta tag (injected by backend)
+  const metaTag = document.querySelector('meta[name="app-version"]');
+  return metaTag?.getAttribute('content') || 'unknown';
+}
+
+async function checkAndHandleVersionUpdate() {
+  const localVersion = getLocalAppVersion();
+  const cacheKey = 'sportsSlate_checked_version';
+  
+  // Check if we already verified the version in this session
+  const lastCheckedVersion = sessionStorage.getItem(cacheKey);
+  
+  try {
+    const response = await fetch('/api/version', { 
+      cache: 'no-store',
+      timeout: 5000 
+    });
+    
+    if (!response.ok) {
+      // If endpoint fails, gracefully degrade - don't block app
+      return;
+    }
+    
+    const data = await response.json();
+    const remoteVersion = data.version;
+    
+    // Store this version check in session
+    sessionStorage.setItem(cacheKey, remoteVersion);
+    
+    // If version changed, force a hard reload with cache busting
+    if (localVersion !== remoteVersion && lastCheckedVersion !== remoteVersion) {
+      // Trigger hard reload with new version in query string
+      const timeStamp = Date.now();
+      const currentUrl = window.location.pathname + window.location.search + window.location.hash;
+      // Remove any existing v= and t= params, then add fresh ones
+      let reloadUrl = currentUrl.split('?')[0] + `?v=${remoteVersion}&t=${timeStamp}`;
+      window.location.href = reloadUrl;
+    }
+  } catch (err) {
+    // Silent fail - don't block app if version check fails
+    console.debug('Version check failed (non-blocking):', err);
+  }
+}
+
+// =====================================================
 // Boot
 // =====================================================
 function boot() {
+  // Start version check in background (non-blocking)
+  checkAndHandleVersionUpdate();
+  
   wireTabs();
   wireSorting();
   wireFilters();
