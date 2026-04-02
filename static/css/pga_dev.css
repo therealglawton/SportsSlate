@@ -167,17 +167,18 @@ tr.not-started td {
 }
 
 @media (max-width: 760px) {
+  /* Keep body scroll available so mobile pull-to-refresh works; PGA section has its own internal scroller. */
   html.pga,
   html.pga body {
     height: 100%;
-    overflow: hidden;
+    overflow: auto;
   }
 
   html.pga .container {
-    height: 100dvh;
+    height: auto;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: visible;
   }
 
   #pgaSection {

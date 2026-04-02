@@ -129,6 +129,17 @@ function setSport(sport) {
   if (cardBoard) cardBoard.style.display = isPga ? "none" : "block";
   if (controlsInline) controlsInline.style.display = isPga ? "none" : "flex";
 
+  // Clear non-PGA status lines when switching to PGA
+  if (isPga) {
+    const countLine = $("countLine");
+    if (countLine) countLine.textContent = "";
+    const error = $("error");
+    if (error) {
+      error.style.display = "none";
+      error.textContent = "";
+    }
+  }
+
   // Control availability by sport
   const minThrillEl = $("minThrill");
   if (minThrillEl) minThrillEl.disabled = !isCbb;
